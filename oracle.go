@@ -23,6 +23,7 @@ type Config struct {
 	DSN               string
 	Conn              *sql.DB
 	DefaultStringSize uint
+	WithoutReturning  bool
 }
 
 type Dialector struct {
@@ -49,8 +50,18 @@ func (d Dialector) Initialize(db *gorm.DB) (err error) {
 	db.NamingStrategy = Namer{}
 	d.DefaultStringSize = 1024
 
+	callbackConfig := &callbacks.Config{
+		CreateClauses: []string{"INSERT", "VALUES", "ON CONFLICT"},
+		UpdateClauses: []string{"UPDATE", "SET", "FROM", "WHERE"},
+		DeleteClauses: []string{"DELETE", "FROM", "WHERE"},
+	}
+	if !d.WithoutReturning {
+		callbackConfig.CreateClauses = append(callbackConfig.CreateClauses, "RETURNING")
+		callbackConfig.UpdateClauses = append(callbackConfig.UpdateClauses, "RETURNING")
+		callbackConfig.DeleteClauses = append(callbackConfig.DeleteClauses, "RETURNING")
+	}
 	// register callbacks
-	callbacks.RegisterDefaultCallbacks(db, &callbacks.Config{WithReturning: true})
+	callbacks.RegisterDefaultCallbacks(db, callbackConfig)
 
 	d.DriverName = "godror"
 
@@ -98,9 +109,9 @@ func (d Dialector) RewriteLimit(c clause.Clause, builder clause.Builder) {
 			builder.WriteString(strconv.Itoa(offset))
 			builder.WriteString(" ROWS")
 		}
-		if limit := limit.Limit; limit > 0 {
+		if limit := limit.Limit; *limit > 0 {
 			builder.WriteString(" FETCH NEXT ")
-			builder.WriteString(strconv.Itoa(limit))
+			builder.WriteString(strconv.Itoa(*limit))
 			builder.WriteString(" ROWS ONLY")
 		}
 	}
